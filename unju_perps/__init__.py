@@ -1,8 +1,9 @@
 """
-unju-perps: Agent-friendly wrapper over Hyperliquid SDK
+unju-perps: MCP Server for AI agents to trade perpetual futures on Hyperliquid
 """
 
 from unju_perps.client import PerpTrader
+from unju_perps.wallet import WalletManager
 from unju_perps.types import Order, Position, Market, OrderSide, OrderType
 from unju_perps.exceptions import (
     UnjuPerpsError,
@@ -16,6 +17,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "PerpTrader",
+    "WalletManager",
     "Order",
     "Position",
     "Market",

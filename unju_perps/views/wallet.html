@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 30px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .card {
+      background: var(--surface, #f8fafc);
+      padding: 30px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border, #e2e8f0);
+    }
+    
+    h1 { margin-bottom: 10px; font-size: 24px; }
+    h2 { margin-bottom: 15px; font-size: 18px; }
+    p { margin-bottom: 15px; line-height: 1.6; opacity: 0.8; }
+    
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 15px;
+      background: var(--bg, #fff);
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .status-icon { font-size: 24px; }
+    .status-text { flex: 1; }
+    .status-label { font-size: 12px; opacity: 0.7; }
+    .status-value { font-size: 18px; font-weight: 600; }
+    
+    button {
+      background: var(--primary, #3b82f6);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 500;
+      width: 100%;
+      margin-top: 10px;
+    }
+    
+    button:hover { opacity: 0.9; }
+    button.secondary { background: var(--surface, #f8fafc); color: var(--text, #0f172a); border: 1px solid var(--border, #e2e8f0); }
+    
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 15px;
+      background: var(--bg, #fff);
+      color: var(--text, #0f172a);
+    }
+    
+    .address {
+      font-family: monospace;
+      word-break: break-all;
+      background: var(--bg, #fff);
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    
+    .price { font-size: 12px; opacity: 0.7; margin-top: 5px; }
+    .loading { text-align: center; padding: 40px; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">Loading wallet status...</div>
+  <div id="content" style="display:none;"></div>
+
+  <script type="module">
+    import { App } from "https://unpkg.com/@modelcontextprotocol/ext-apps@0.4.0/app-with-deps";
+
+    const app = new App({ name: "Wallet Setup", version: "1.0.0" });
+
+    app.ontoolresult = ({ content }) => {
+      const data = JSON.parse(content[0].text);
+      renderWalletStatus(data);
+      
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+    };
+
+    function renderWalletStatus(data) {
+      const container = document.getElementById('content');
+      
+      if (data.error && data.action === 'info') {
+        // No wallet configured
+        container.innerHTML = `
+          <div class="card">
+            <h1>🔐 Setup Trading Wallet</h1>
+            <p>Create a secure wallet to start trading perpetual futures on Hyperliquid.</p>
+            
+            <div class="status">
+              <div class="status-icon">💳</div>
+              <div class="status-text">
+                <div class="status-label">Creation Cost</div>
+                <div class="status-value">1 unju-credit</div>
+              </div>
+            </div>
+            
+            <div class="status">
+              <div class="status-icon">📅</div>
+              <div class="status-text">
+                <div class="status-label">Annual Rent</div>
+                <div class="status-value">10 credits/year</div>
+              </div>
+            </div>
+            
+            <button onclick="createWallet()">Create Wallet</button>
+            <p class="price">Uses Magic server wallets - secure, non-custodial</p>
+          </div>
+        `;
+      } else if (data.action === 'info') {
+        // Wallet exists
+        container.innerHTML = `
+          <div class="card">
+            <h1>💰 Wallet Status</h1>
+            
+            <div class="status">
+              <div class="status-icon">💵</div>
+              <div class="status-text">
+                <div class="status-label">Balance</div>
+                <div class="status-value">$${data.balance.toFixed(2)}</div>
+              </div>
+            </div>
+            
+            <div class="status">
+              <div class="status-icon">✅</div>
+              <div class="status-text">
+                <div class="status-label">Available</div>
+                <div class="status-value">$${data.available.toFixed(2)}</div>
+              </div>
+            </div>
+            
+            <h2>Wallet Address</h2>
+            <div class="address">${data.address}</div>
+            
+            <button onclick="fundWallet()">Fund Wallet</button>
+            <button class="secondary" onclick="viewDashboard()">View Dashboard</button>
+          </div>
+        `;
+      } else if (data.action === 'fund') {
+        // Funding instructions
+        container.innerHTML = `
+          <div class="card">
+            <h1>💰 Fund Your Wallet</h1>
+            
+            <h2>Wallet Address</h2>
+            <div class="address">${data.address}</div>
+            
+            <h2 style="margin-top: 20px;">Instructions</h2>
+            <ol style="padding-left: 20px; line-height: 2;">
+              ${data.instructions.map(inst => `<li>${inst}</li>`).join('')}
+            </ol>
+            
+            <div style="margin-top: 20px;">
+              <strong>Network:</strong> ${data.network}<br>
+              <strong>Min Amount:</strong> ${data.min_amount}
+            </div>
+            
+            ${data.testnet_faucet ? `
+              <button onclick="window.open('${data.testnet_faucet}', '_blank')">
+                🚰 Get Testnet Tokens
+              </button>
+            ` : ''}
+            
+            <button class="secondary" onclick="checkStatus()">Check Status</button>
+          </div>
+        `;
+      } else if (data.action === 'created') {
+        // Wallet created successfully
+        container.innerHTML = `
+          <div class="card">
+            <h1>✨ Wallet Created!</h1>
+            <p>Your trading wallet has been created successfully.</p>
+            
+            <div class="status">
+              <div class="status-icon">✅</div>
+              <div class="status-text">
+                <div class="status-label">Address</div>
+                <div class="status-value" style="font-size: 12px; font-family: monospace;">${data.address.slice(0,20)}...</div>
+              </div>
+            </div>
+            
+            <div class="status">
+              <div class="status-icon">💳</div>
+              <div class="status-text">
+                <div class="status-label">Credits Charged</div>
+                <div class="status-value">${data.credits_charged}</div>
+              </div>
+            </div>
+            
+            <button onclick="fundWallet()">Fund Wallet to Start Trading</button>
+          </div>
+        `;
+      }
+    }
+
+    window.createWallet = async () => {
+      const email = prompt('Enter your email for wallet creation:');
+      if (!email) return;
+      
+      try {
+        await app.callTool("wallet_setup", { 
+          action: "create",
+          email: email
+        });
+      } catch (e) {
+        alert('Failed to create wallet: ' + e.message);
+      }
+    };
+
+    window.fundWallet = async () => {
+      try {
+        await app.callTool("wallet_setup", { action: "fund" });
+      } catch (e) {
+        alert('Failed to get funding info: ' + e.message);
+      }
+    };
+
+    window.checkStatus = async () => {
+      try {
+        await app.callTool("wallet_setup", { action: "info" });
+      } catch (e) {
+        alert('Failed to check status: ' + e.message);
+      }
+    };
+
+    window.viewDashboard = async () => {
+      try {
+        await app.callTool("get_dashboard", {});
+      } catch (e) {
+        alert('Failed to open dashboard: ' + e.message);
+      }
+    };
+
+    await app.connect();
+  </script>
+</body>
+</html>
