@@ -124,17 +124,48 @@ pytest
 mypy unju_perps/
 ```
 
+## Architecture
+
+See **[RFC-001: MCP Server Architecture](RFC-001-MCP-SERVER.md)** for the complete technical specification.
+
+**Key Design Decisions:**
+- MCP server with stdio transport (no web UI)
+- Visual feedback via inline images (charts as base64 PNG)
+- Built-in risk management and safety controls
+- Native LiveKit agent integration
+
 ## Roadmap
 
-- [ ] Basic market orders (long/short/close)
-- [ ] Limit orders & advanced order types
+### Phase 1: Core MCP Server (Week 1)
+- [ ] FastMCP server setup
+- [ ] Basic trading tools (market_order, get_position, get_balance)
+- [ ] Risk management layer
+
+### Phase 2: Visual Feedback (Week 1-2)
+- [ ] Chart generation (matplotlib)
+- [ ] Dashboard and position charts
+- [ ] Base64 image pipeline
+
+### Phase 3: Advanced Tools (Week 2)
+- [ ] Close position, market data, risk limits
 - [ ] Stop loss / take profit automation
-- [ ] Portfolio tracking & PnL analytics
+
+### Phase 4: LiveKit Integration (Week 2-3)
+- [ ] Example agent integration
+- [ ] Documentation and demos
+
+### Phase 5: Production Hardening (Week 3-4)
+- [ ] Error recovery and monitoring
+- [ ] Performance optimization
+- [ ] Security audit
+
+### Future Enhancements
 - [ ] Multi-account management
 - [ ] Position rebalancing strategies
 - [ ] Liquidation monitoring & alerts
-- [ ] Integration with unju-agent tool system
 - [ ] Integration with unju vault for key management
+- [ ] WebSocket real-time updates
+- [ ] Interactive plotly charts
 
 ## License
 
