@@ -3,11 +3,11 @@
 **Status:** Draft  
 **Author:** Green Tara (AI Agent)  
 **Created:** 2026-02-25  
-**Updated:** 2026-02-25
+**Updated:** 2026-02-25 (v2 - MCP Apps)
 
 ## Abstract
 
-This RFC proposes the architecture for `unju-perps`, an MCP (Model Context Protocol) server that provides AI agents with tools to trade perpetual futures on Hyperliquid. The server exposes trading operations, portfolio monitoring, and risk management through a standardized MCP interface, with visual feedback delivered as inline images.
+This RFC proposes the architecture for `unju-perps`, an MCP (Model Context Protocol) server that provides AI agents with tools to trade perpetual futures on Hyperliquid. The server exposes trading operations, portfolio monitoring, and risk management through a standardized MCP interface, with **interactive HTML UIs** delivered via the MCP Apps extension.
 
 ## Motivation
 
@@ -16,20 +16,21 @@ This RFC proposes the architecture for `unju-perps`, an MCP (Model Context Proto
 Current challenges for AI agents trading cryptocurrency perpetuals:
 
 1. **Complex API Integration**: Direct Hyperliquid SDK integration requires agents to handle wallet management, signing, nonce tracking, and error recovery
-2. **No Visual Feedback**: Agents cannot show users portfolio charts, P&L graphs, or position visualizations
+2. **No Interactive Feedback**: Agents cannot show users interactive charts, real-time position updates, or configuration forms
 3. **Limited Safety**: No built-in risk management, position limits, or circuit breakers
 4. **Poor Agent UX**: Clunky tool interfaces that require multiple calls for common workflows
 
 ### Goals
 
 1. **Agent-First Design**: Simple, intuitive tools optimized for LLM function calling
-2. **Visual Output**: Return charts and dashboards as images in MCP responses
+2. **Interactive Output**: Return rich HTML UIs with live charts, buttons, forms via MCP Apps extension
 3. **Safety by Default**: Built-in risk controls, position limits, and validation
 4. **LiveKit Native**: Seamless integration with unju-agent via LiveKit's MCP support
+5. **Bidirectional Communication**: UIs can call tools back to server for actions
 
 ### Non-Goals
 
-1. ~~Web UI for humans~~ (use MCP images instead)
+1. ~~Static images (base64 PNG)~~ — replaced with interactive HTML
 2. ~~REST API~~ (MCP only)
 3. ~~Multi-exchange support~~ (Hyperliquid only for v1)
 4. ~~Historical data analysis~~ (focus on real-time trading)
@@ -39,49 +40,64 @@ Current challenges for AI agents trading cryptocurrency perpetuals:
 ### Architecture Overview
 
 ```
-┌─────────────────────────────────────┐
-│      LiveKit Agent (unju-agent)     │
-│                                     │
-│  ┌─────────────────────────────┐   │
-│  │  MCP Client (native)        │   │
-│  │  - stdio transport          │   │
-│  │  - tool discovery           │   │
-│  │  - function calls           │   │
-│  └──────────┬──────────────────┘   │
-└─────────────┼────────────────────────┘
+┌─────────────────────────────────────────────┐
+│      LiveKit Agent (unju-agent)             │
+│                                             │
+│  ┌───────────────────────────────────────┐ │
+│  │  MCP Client (native)                  │ │
+│  │  - stdio transport                    │ │
+│  │  - tool discovery                     │ │
+│  │  - function calls                     │ │
+│  │  - iframe rendering (MCP Apps)        │ │
+│  └──────────┬────────────────────────────┘ │
+└─────────────┼──────────────────────────────┘
               │ stdio (JSON-RPC)
               ▼
-┌─────────────────────────────────────┐
-│      unju-perps MCP Server          │
-│                                     │
-│  ┌─────────────────────────────┐   │
-│  │  MCP Tools (FastMCP)        │   │
-│  │  - market_order()           │   │
-│  │  - get_position()           │   │
-│  │  - get_dashboard()          │   │
-│  │  - close_position()         │   │
-│  └──────────┬──────────────────┘   │
-│             │                       │
-│  ┌──────────▼──────────────────┐   │
-│  │  Trading Logic              │   │
-│  │  - PerpTrader client        │   │
-│  │  - Risk management          │   │
-│  │  - Position tracking        │   │
-│  └──────────┬──────────────────┘   │
-│             │                       │
-│  ┌──────────▼──────────────────┐   │
-│  │  Chart Generation           │   │
-│  │  - matplotlib/plotly        │   │
-│  │  - PNG/WebP output          │   │
-│  │  - base64 encoding          │   │
-│  └──────────┬──────────────────┘   │
-└─────────────┼────────────────────────┘
+┌─────────────────────────────────────────────┐
+│      unju-perps MCP Server                  │
+│                                             │
+│  ┌───────────────────────────────────────┐ │
+│  │  MCP Tools (FastMCP)                  │ │
+│  │  - market_order()                     │ │
+│  │  - get_position()                     │ │
+│  │  - get_dashboard() ← UI view          │ │
+│  │  - close_position()                   │ │
+│  │  - configure_risk() ← UI view         │ │
+│  └──────────┬────────────────────────────┘ │
+│             │                               │
+│  ┌──────────▼────────────────────────────┐ │
+│  │  MCP UI Resources (@mcp.resource)     │ │
+│  │  - ui://perps/dashboard               │ │
+│  │  - ui://perps/position                │ │
+│  │  - ui://perps/risk-config             │ │
+│  │  (Embedded HTML + MCP Apps SDK)       │ │
+│  └──────────┬────────────────────────────┘ │
+│             │                               │
+│  ┌──────────▼────────────────────────────┐ │
+│  │  Trading Logic                        │ │
+│  │  - PerpTrader client                  │ │
+│  │  - Risk management                    │ │
+│  │  - Position tracking                  │ │
+│  └──────────┬────────────────────────────┘ │
+└─────────────┼──────────────────────────────┘
               │ HTTPS
               ▼
-┌─────────────────────────────────────┐
-│      Hyperliquid Exchange           │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│      Hyperliquid Exchange                   │
+└─────────────────────────────────────────────┘
 ```
+
+### MCP Apps Flow
+
+1. **Tool Declaration**: Tool metadata includes `ui/resourceUri` pointing to UI resource
+2. **Tool Execution**: Agent calls tool (e.g., `get_dashboard`)
+3. **Data Return**: Server returns structured data in tool result
+4. **UI Fetch**: Host fetches UI resource (HTML) via `ui://` URI
+5. **Render**: Host renders HTML in sandboxed iframe
+6. **Initialize**: UI connects via MCP Apps SDK using postMessage
+7. **Tool Result**: Host sends tool result data to UI via notification
+8. **Render**: UI renders interactive chart/form/dashboard
+9. **Interaction**: User clicks buttons, UI calls other tools back to server
 
 ### Project Structure
 
@@ -89,9 +105,12 @@ Current challenges for AI agents trading cryptocurrency perpetuals:
 unju-perps/
 ├── unju_perps/
 │   ├── __init__.py
-│   ├── server.py           # MCP server (FastMCP)
+│   ├── server.py           # MCP server (FastMCP + UI resources)
 │   ├── client.py           # Hyperliquid trading logic
-│   ├── charts.py           # Chart generation (matplotlib/plotly)
+│   ├── views/              # Embedded HTML UIs
+│   │   ├── dashboard.html  # Portfolio overview
+│   │   ├── position.html   # Position detail chart
+│   │   └── risk.html       # Risk configuration form
 │   ├── types.py            # Order, Position, Market, Balance
 │   ├── risk.py             # Risk management & limits
 │   ├── exceptions.py       # Custom exceptions
@@ -99,7 +118,7 @@ unju-perps/
 ├── tests/
 │   ├── test_server.py
 │   ├── test_client.py
-│   └── test_charts.py
+│   └── test_ui.py
 ├── examples/
 │   └── agent_integration.py
 ├── pyproject.toml
@@ -162,9 +181,20 @@ Execute a market order with slippage protection.
 }
 ```
 
+**UI:** None (simple text response)
+
 #### 2. `get_position`
 
-Get detailed information about a specific position.
+Get detailed information about a specific position with interactive chart.
+
+**Tool Metadata:**
+```json
+{
+  "_meta": {
+    "ui/resourceUri": "ui://perps/position"
+  }
+}
+```
 
 **Input Schema:**
 ```json
@@ -176,7 +206,7 @@ Get detailed information about a specific position.
 }
 ```
 
-**Output:**
+**Output (Tool Result):**
 ```json
 {
   "symbol": "BTC",
@@ -189,95 +219,95 @@ Get detailed information about a specific position.
   "unrealized_pnl": 2.65,
   "unrealized_pnl_pct": 5.18,
   "margin": 102.47,
-  "message": "📊 BTC Long: $100 → $102.65 (+2.65%)"
+  "price_history": [
+    {"time": "12:00", "price": 51234.56},
+    {"time": "12:05", "price": 51300.00},
+    {"time": "12:10", "price": 51500.00}
+  ]
 }
 ```
+
+**UI View (`ui://perps/position`):**
+- Interactive price chart (plotly/chartjs)
+- Entry price marker
+- Current price line
+- Liquidation zone (red shaded)
+- P&L indicator
+- "Close Position" button (calls `close_position` tool)
+- "Set Stop Loss" button (calls `set_stop_loss` tool)
 
 #### 3. `get_dashboard`
 
-Generate a visual dashboard with portfolio overview.
+Generate interactive portfolio dashboard.
 
-**Input Schema:**
+**Tool Metadata:**
 ```json
 {
-  "format": {
-    "type": "string",
-    "enum": ["png", "webp"],
-    "default": "png"
-  },
-  "width": {
-    "type": "integer",
-    "default": 1200
-  },
-  "height": {
-    "type": "integer",
-    "default": 800
+  "_meta": {
+    "ui/resourceUri": "ui://perps/dashboard"
   }
 }
 ```
 
-**Output:**
+**Input Schema:**
 ```json
 {
-  "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...",
-  "type": "image/png",
-  "summary": {
-    "total_balance": 10234.56,
-    "total_pnl": 234.56,
-    "total_pnl_pct": 2.34,
-    "open_positions": 3,
-    "largest_position": "BTC"
-  },
-  "message": "💰 Portfolio: $10,234 | P&L: +$234.56 (+2.34%) | 3 positions"
+  "refresh_interval": {
+    "type": "integer",
+    "default": 5,
+    "description": "Auto-refresh interval in seconds (0 = disabled)"
+  }
 }
 ```
 
-**Chart Contents:**
-- Top panel: Position P&L bar chart
-- Middle panel: Portfolio balance over time
-- Bottom panel: Active positions table with entry/current/liquidation prices
+**Output (Tool Result):**
+```json
+{
+  "balance": {
+    "total": 10234.56,
+    "available": 5000.00,
+    "margin_used": 5234.56,
+    "unrealized_pnl": 234.56
+  },
+  "positions": [
+    {
+      "symbol": "BTC",
+      "side": "long",
+      "size": 0.01,
+      "entry_price": 51234.56,
+      "mark_price": 51500.00,
+      "unrealized_pnl": 2.65,
+      "unrealized_pnl_pct": 5.18
+    },
+    {
+      "symbol": "ETH",
+      "side": "short",
+      "size": 0.5,
+      "entry_price": 2345.67,
+      "mark_price": 2320.00,
+      "unrealized_pnl": 12.84,
+      "unrealized_pnl_pct": 1.09
+    }
+  ],
+  "balance_history": [
+    {"time": "2026-02-18", "balance": 10000.00},
+    {"time": "2026-02-19", "balance": 10050.00},
+    {"time": "2026-02-25", "balance": 10234.56}
+  ]
+}
+```
+
+**UI View (`ui://perps/dashboard`):**
+- **Header**: Total balance, P&L, available margin
+- **Chart 1**: Position P&L bar chart (green/red)
+- **Chart 2**: Balance history line chart (7d)
+- **Table**: Active positions with entry/current/liq prices
+- **Buttons**: "New Order", "Close All", "Risk Settings"
+- **Auto-refresh**: Updates every N seconds via repeated tool calls
 
 #### 4. `get_position_chart`
 
-Generate detailed chart for a specific position.
-
-**Input Schema:**
-```json
-{
-  "symbol": {
-    "type": "string",
-    "description": "Asset symbol"
-  },
-  "timeframe": {
-    "type": "string",
-    "enum": ["1h", "4h", "1d"],
-    "default": "1h"
-  }
-}
-```
-
-**Output:**
-```json
-{
-  "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...",
-  "type": "image/png",
-  "position": {
-    "symbol": "BTC",
-    "entry_price": 51234.56,
-    "current_price": 51500.00,
-    "liquidation_price": 46000.00,
-    "pnl": 2.65
-  },
-  "message": "📈 BTC position: Entry $51,234 → Now $51,500 → Liq $46,000"
-}
-```
-
-**Chart Contents:**
-- Price action with entry marker
-- Current price line
-- Liquidation price danger zone (red)
-- P&L indicator
-- Volume bars
+**DEPRECATED** - Merged into `get_position` with UI view.
 
 #### 5. `close_position`
 
@@ -313,6 +343,8 @@ Close an open position at market price.
 }
 ```
 
+**UI:** None (simple text response)
+
 #### 6. `get_balance`
 
 Get account balance and available margin.
@@ -333,6 +365,8 @@ Get account balance and available margin.
   "message": "💵 Balance: $10,234 | Available: $5,000 | BP: $50,000"
 }
 ```
+
+**UI:** None (simple text response)
 
 #### 7. `get_market_data`
 
@@ -365,9 +399,20 @@ Get current market data for a symbol.
 }
 ```
 
-#### 8. `set_risk_limits`
+**UI:** None (simple text response)
 
-Configure risk management limits for the account.
+#### 8. `configure_risk`
+
+Configure risk management limits with interactive form.
+
+**Tool Metadata:**
+```json
+{
+  "_meta": {
+    "ui/resourceUri": "ui://perps/risk-config"
+  }
+}
+```
 
 **Input Schema:**
 ```json
@@ -394,15 +439,275 @@ Configure risk management limits for the account.
 }
 ```
 
-**Output:**
+**Output (Tool Result):**
 ```json
 {
   "max_position_size_usd": 10000,
   "max_leverage": 10,
   "max_daily_loss_usd": 1000,
   "allowed_symbols": ["BTC", "ETH", "SOL"],
-  "message": "🛡️ Risk limits updated: $10k max position, 10x max leverage, $1k daily loss limit"
+  "current_daily_loss": -123.45,
+  "circuit_breaker_active": false
 }
+```
+
+**UI View (`ui://perps/risk-config`):**
+- **Form fields** for each risk parameter
+- **Current values** pre-filled
+- **Visual warnings** if limits close to breach
+- **Circuit breaker status** indicator
+- **Save button** (calls `configure_risk` with new values)
+- **Reset to defaults** button
+
+### UI Resources Implementation
+
+#### Server Side (`unju_perps/server.py`)
+
+```python
+from mcp.server.fastmcp import FastMCP
+from mcp import types
+import json
+
+VIEW_DASHBOARD = "ui://perps/dashboard"
+VIEW_POSITION = "ui://perps/position"
+VIEW_RISK = "ui://perps/risk-config"
+
+mcp = FastMCP("unju-perps", stateless_http=True)
+
+# Tool with UI reference
+@mcp.tool(meta={"ui": {"resourceUri": VIEW_DASHBOARD}})
+def get_dashboard(refresh_interval: int = 5) -> list[types.TextContent]:
+    """Get interactive portfolio dashboard."""
+    balance = trader.get_balance()
+    positions = trader.get_all_positions()
+    history = trader.get_balance_history(days=7)
+    
+    data = {
+        "balance": balance.dict(),
+        "positions": [p.dict() for p in positions],
+        "balance_history": history
+    }
+    
+    return [types.TextContent(
+        type="text",
+        text=json.dumps(data)
+    )]
+
+# UI Resource
+@mcp.resource(
+    VIEW_DASHBOARD,
+    mime_type="text/html;profile=mcp-app",
+    meta={"ui": {"csp": {"resourceDomains": [
+        "https://unpkg.com",
+        "https://cdn.plot.ly"
+    ]}}}
+)
+def dashboard_view() -> str:
+    """Interactive dashboard UI."""
+    with open("unju_perps/views/dashboard.html") as f:
+        return f.read()
+```
+
+#### Client Side (`unju_perps/views/dashboard.html`)
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+      margin: 0;
+      padding: 20px;
+      background: var(--background);
+      color: var(--text);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .metric {
+      background: var(--surface);
+      padding: 15px;
+      border-radius: 8px;
+      flex: 1;
+      margin: 0 5px;
+    }
+    .chart {
+      background: var(--surface);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="metric">
+      <div class="label">Total Balance</div>
+      <div class="value" id="balance">$0</div>
+    </div>
+    <div class="metric">
+      <div class="label">Unrealized P&L</div>
+      <div class="value" id="pnl">$0</div>
+    </div>
+    <div class="metric">
+      <div class="label">Available Margin</div>
+      <div class="value" id="available">$0</div>
+    </div>
+  </div>
+
+  <div class="chart" id="pnl-chart"></div>
+  <div class="chart" id="balance-chart"></div>
+
+  <div id="positions-table"></div>
+
+  <div style="margin-top: 20px;">
+    <button onclick="closeAllPositions()">Close All Positions</button>
+    <button onclick="configureRisk()">Risk Settings</button>
+  </div>
+
+  <script type="module">
+    import { App } from "https://unpkg.com/@modelcontextprotocol/ext-apps@0.4.0/app-with-deps";
+
+    const app = new App({ name: "Perps Dashboard", version: "1.0.0" });
+
+    let refreshInterval;
+
+    app.ontoolresult = ({ content }) => {
+      const data = JSON.parse(content[0].text);
+      renderDashboard(data);
+      
+      // Start auto-refresh if requested
+      if (data.refresh_interval && data.refresh_interval > 0) {
+        clearInterval(refreshInterval);
+        refreshInterval = setInterval(async () => {
+          await app.callTool("get_dashboard", { refresh_interval: data.refresh_interval });
+        }, data.refresh_interval * 1000);
+      }
+    };
+
+    function renderDashboard(data) {
+      // Update header metrics
+      document.getElementById('balance').textContent = 
+        `$${data.balance.total.toFixed(2)}`;
+      document.getElementById('pnl').textContent = 
+        `$${data.balance.unrealized_pnl.toFixed(2)}`;
+      document.getElementById('available').textContent = 
+        `$${data.balance.available.toFixed(2)}`;
+      
+      // Render position P&L bar chart
+      const pnlTrace = {
+        x: data.positions.map(p => p.symbol),
+        y: data.positions.map(p => p.unrealized_pnl),
+        type: 'bar',
+        marker: {
+          color: data.positions.map(p => p.unrealized_pnl >= 0 ? '#10b981' : '#ef4444')
+        }
+      };
+      Plotly.newPlot('pnl-chart', [pnlTrace], {
+        title: 'Position P&L',
+        height: 300,
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)'
+      });
+
+      // Render balance history line chart
+      const balanceTrace = {
+        x: data.balance_history.map(h => h.time),
+        y: data.balance_history.map(h => h.balance),
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#3b82f6' }
+      };
+      Plotly.newPlot('balance-chart', [balanceTrace], {
+        title: 'Balance (7d)',
+        height: 300,
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)'
+      });
+
+      // Render positions table
+      const table = `
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: var(--surface);">
+              <th style="padding: 10px; text-align: left;">Symbol</th>
+              <th style="padding: 10px; text-align: left;">Side</th>
+              <th style="padding: 10px; text-align: right;">Entry</th>
+              <th style="padding: 10px; text-align: right;">Current</th>
+              <th style="padding: 10px; text-align: right;">P&L</th>
+              <th style="padding: 10px; text-align: center;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.positions.map(p => `
+              <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">${p.symbol}</td>
+                <td style="padding: 10px;">${p.side}</td>
+                <td style="padding: 10px; text-align: right;">$${p.entry_price.toFixed(2)}</td>
+                <td style="padding: 10px; text-align: right;">$${p.mark_price.toFixed(2)}</td>
+                <td style="padding: 10px; text-align: right; color: ${p.unrealized_pnl >= 0 ? '#10b981' : '#ef4444'};">
+                  $${p.unrealized_pnl.toFixed(2)} (${p.unrealized_pnl_pct.toFixed(2)}%)
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                  <button onclick="closePosition('${p.symbol}')">Close</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      document.getElementById('positions-table').innerHTML = table;
+    }
+
+    window.closePosition = async (symbol) => {
+      await app.callTool("close_position", { symbol });
+      // Dashboard will auto-refresh and show updated positions
+    };
+
+    window.closeAllPositions = async () => {
+      if (confirm('Close all positions?')) {
+        await app.callTool("close_all_positions", {});
+      }
+    };
+
+    window.configureRisk = async () => {
+      await app.callTool("configure_risk", {});
+    };
+
+    app.onhostcontextchanged = (ctx) => {
+      // Handle theme changes
+      if (ctx.theme === 'dark') {
+        document.documentElement.style.setProperty('--background', '#0f172a');
+        document.documentElement.style.setProperty('--surface', '#1e293b');
+        document.documentElement.style.setProperty('--text', '#f1f5f9');
+      } else {
+        document.documentElement.style.setProperty('--background', '#ffffff');
+        document.documentElement.style.setProperty('--surface', '#f8fafc');
+        document.documentElement.style.setProperty('--text', '#0f172a');
+      }
+    };
+
+    await app.connect();
+  </script>
+</body>
+</html>
 ```
 
 ### Risk Management
@@ -410,7 +715,7 @@ Configure risk management limits for the account.
 #### Position Limits
 - Default: $10,000 max position size
 - Default: 10x max leverage
-- Configurable per-account via `set_risk_limits`
+- Configurable per-account via `configure_risk` UI
 
 #### Daily Loss Circuit Breaker
 - Default: $1,000 max daily loss
@@ -422,6 +727,7 @@ Configure risk management limits for the account.
 - Optional: restrict trading to specific symbols
 - Prevents agents from trading low-liquidity/high-risk assets
 - Default: all Hyperliquid-supported symbols allowed
+- Configurable via `configure_risk` UI
 
 #### Slippage Protection
 - Default: 50 bps (0.5%) max slippage
@@ -433,43 +739,6 @@ Configure risk management limits for the account.
 - Position size validation
 - Leverage limit enforcement
 - Symbol whitelist enforcement
-
-### Chart Generation
-
-#### Technology Stack
-- **matplotlib** for static charts (simple, fast)
-- **plotly** for interactive charts (future enhancement)
-- **Pillow** for image processing
-- Output: PNG or WebP format
-- Encoding: base64 for MCP transmission
-
-#### Chart Types
-
-**Dashboard:**
-- Style: Clean, professional, unju.ai branding
-- Resolution: 1200x800 @ 150 DPI
-- Components:
-  - Position P&L bars (green/red)
-  - Balance line chart (7d history)
-  - Positions table (symbol, entry, current, liq, P&L)
-  - Summary metrics header
-
-**Position Chart:**
-- Style: Trading view inspired
-- Resolution: 1000x600 @ 150 DPI
-- Components:
-  - Candlestick/line price chart
-  - Entry price horizontal line (blue)
-  - Current price marker
-  - Liquidation zone (red shaded)
-  - P&L annotation
-  - Volume bars
-
-#### Performance
-- Cache rendered charts (5 second TTL)
-- Lazy load chart libraries
-- Async rendering
-- Target: <500ms chart generation
 
 ### Security
 
@@ -485,11 +754,12 @@ Configure risk management limits for the account.
 - Exponential backoff on errors
 - Connection pooling
 
-#### Agent Security
-- MCP server runs in isolated process
-- No network access except Hyperliquid API
-- File system access limited to config
-- Memory limits enforced
+#### MCP Apps Security
+- Sandboxed iframes with CSP restrictions
+- Explicit `resourceDomains` whitelist for external CDNs
+- No arbitrary script execution
+- All UI-to-server communication via MCP JSON-RPC
+- User consent for tool calls from UI (host-enforced)
 
 ### Testing Strategy
 
@@ -497,7 +767,7 @@ Configure risk management limits for the account.
 - Mock Hyperliquid API responses
 - Test all MCP tools independently
 - Risk limit enforcement
-- Chart generation
+- UI resource generation
 
 #### Integration Tests
 - Connect to Hyperliquid testnet
@@ -505,11 +775,17 @@ Configure risk management limits for the account.
 - Position management
 - Balance queries
 
+#### UI Tests
+- Render UI views in test harness
+- Verify postMessage communication
+- Test tool calls from UI
+- Theme switching
+
 #### Agent Integration Tests
 - LiveKit agent connection
 - Tool discovery
 - Function calling
-- Image rendering in chat
+- UI rendering in chat
 
 ### Deployment
 
@@ -524,11 +800,17 @@ export HYPERLIQUID_PRIVATE_KEY="0x..."
 export HYPERLIQUID_TESTNET="true"  # optional
 ```
 
-#### Running MCP Server
+#### Running MCP Server (stdio)
+```bash
+uv run unju-perps --stdio
+# or
+python -m unju_perps.server --stdio
+```
+
+#### Running MCP Server (HTTP for testing)
 ```bash
 uv run unju-perps
-# or
-python -m unju_perps.server
+# Starts HTTP server on http://localhost:3001/mcp
 ```
 
 #### LiveKit Agent Integration
@@ -539,11 +821,16 @@ from livekit.agents import mcp
 perps = mcp.connect(
     "stdio",
     command="uv",
-    args=["run", "unju-perps"]
+    args=["run", "unju-perps", "--stdio"]
 )
 
 # Tools automatically available
 tools = await perps.list_tools()
+
+# Agent conversation
+# User: "Show me my portfolio"
+# Agent calls: get_dashboard()
+# Host renders: Interactive dashboard UI
 ```
 
 #### Claude Desktop Configuration
@@ -552,7 +839,7 @@ tools = await perps.list_tools()
   "mcpServers": {
     "unju-perps": {
       "command": "uv",
-      "args": ["run", "unju-perps"],
+      "args": ["run", "unju-perps", "--stdio"],
       "env": {
         "HYPERLIQUID_PRIVATE_KEY": "0x...",
         "HYPERLIQUID_TESTNET": "true"
@@ -564,7 +851,24 @@ tools = await perps.list_tools()
 
 ## Alternatives Considered
 
-### Alternative 1: Web UI + REST API
+### Alternative 1: Static Base64 Images
+
+**Approach:** Tools return matplotlib charts as base64 PNG.
+
+**Pros:**
+- Simple implementation
+- No iframe sandboxing needed
+- Works in any host
+
+**Cons:**
+- No interactivity (no buttons, forms, real-time updates)
+- No bidirectional communication
+- Poor UX for complex data
+- Regenerate entire image for updates
+
+**Rejected because:** MCP Apps provides vastly better UX with interactive HTML.
+
+### Alternative 2: Web UI + REST API
 
 **Approach:** Build a web server with REST API and browser UI.
 
@@ -580,9 +884,9 @@ tools = await perps.list_tools()
 - Two interfaces to maintain
 - Network dependency
 
-**Rejected because:** MCP with images provides better agent UX and simpler architecture.
+**Rejected because:** MCP with interactive UIs provides better agent UX and simpler architecture.
 
-### Alternative 2: Multi-Exchange Support
+### Alternative 3: Multi-Exchange Support
 
 **Approach:** Support multiple DEXs (dYdX, GMX, etc.) via unified interface.
 
@@ -598,23 +902,6 @@ tools = await perps.list_tools()
 - Increases scope significantly
 
 **Deferred because:** Focus on Hyperliquid first, add exchanges later if needed.
-
-### Alternative 3: Historical Analysis Tools
-
-**Approach:** Add tools for backtesting, performance analytics, trade journaling.
-
-**Pros:**
-- Better decision making
-- Performance tracking
-- Learning from history
-
-**Cons:**
-- Scope creep
-- Database required
-- Complex queries
-- Not core to trading
-
-**Deferred because:** Focus on real-time trading first, add analytics later.
 
 ### Alternative 4: Direct SDK in Agent
 
@@ -637,30 +924,31 @@ tools = await perps.list_tools()
 ## Implementation Plan
 
 ### Phase 1: Core MCP Server (Week 1)
-- [ ] FastMCP server setup
+- [ ] FastMCP server setup with stdio transport
 - [ ] Hyperliquid SDK integration
 - [ ] Basic tools: `market_order`, `get_position`, `get_balance`
 - [ ] Risk management layer
 - [ ] Unit tests
 
-### Phase 2: Visual Feedback (Week 1-2)
-- [ ] matplotlib chart generation
-- [ ] Dashboard chart
-- [ ] Position chart
-- [ ] base64 encoding pipeline
-- [ ] Chart caching
+### Phase 2: Interactive UIs (Week 1-2)
+- [ ] MCP Apps SDK integration
+- [ ] Dashboard UI view (HTML + plotly)
+- [ ] Position detail UI view
+- [ ] UI resource registration
+- [ ] Bidirectional communication (UI → tool calls)
+- [ ] Theme support (light/dark)
 
 ### Phase 3: Advanced Tools (Week 2)
-- [ ] `close_position`
-- [ ] `get_market_data`
-- [ ] `set_risk_limits`
+- [ ] `close_position` tool
+- [ ] `get_market_data` tool
+- [ ] `configure_risk` tool with UI form
 - [ ] Stop loss / take profit automation
 - [ ] Integration tests
 
 ### Phase 4: LiveKit Integration (Week 2-3)
 - [ ] Example agent integration
 - [ ] Tool discovery validation
-- [ ] Chat image rendering
+- [ ] UI rendering in LiveKit
 - [ ] Documentation
 - [ ] Demo video
 
@@ -671,30 +959,34 @@ tools = await perps.list_tools()
 - [ ] Rate limit handling
 - [ ] Performance optimization
 - [ ] Security audit
+- [ ] Auto-refresh optimization
 
 ## Open Questions
 
-1. **Chart library choice**: matplotlib (simple, fast) vs plotly (interactive)?
-   - **Recommendation**: Start with matplotlib, add plotly later for interactive charts
+1. **Chart library choice**: plotly (rich, interactive) vs chartjs (lightweight)?
+   - **Recommendation**: Plotly for rich features, optimize bundle size with CDN caching
 
-2. **Image format**: PNG (universal) vs WebP (smaller)?
-   - **Recommendation**: PNG default, WebP optional for bandwidth optimization
+2. **Auto-refresh strategy**: polling vs websocket?
+   - **Recommendation**: Polling initially (UI calls `get_dashboard` on interval), websocket in Phase 6
 
 3. **Vault integration**: When to add secure key management?
    - **Recommendation**: Phase 6 after core features stable
 
 4. **Multi-account support**: Should one server support multiple trading accounts?
-   - **Recommendation**: One server per account initially, add multi-account later
+   - **Recommendation**: One server per account initially, add multi-account in Phase 6
 
-5. **Real-time updates**: Should positions auto-update via websocket?
-   - **Recommendation**: Polling initially, websocket in Phase 6
+5. **UI framework**: Vanilla JS vs React/Vue/Svelte?
+   - **Recommendation**: Vanilla JS for dashboard (no build step), allow React for complex UIs later
+
+6. **CSP domains**: Which chart/UI libraries to whitelist?
+   - **Recommendation**: unpkg.com (MCP Apps SDK), cdn.plot.ly (charts)
 
 ## Success Metrics
 
 ### Agent UX
 - Tool call success rate: >99%
 - Average response time: <500ms
-- Chart generation time: <500ms
+- UI render time: <1000ms
 - Error recovery rate: >95%
 
 ### Trading Performance
@@ -703,15 +995,25 @@ tools = await perps.list_tools()
 - Risk limit enforcement: 100%
 - Zero unauthorized trades
 
+### UI Performance
+- Initial render: <1s
+- Interaction responsiveness: <100ms
+- Chart rendering: <500ms
+- Auto-refresh overhead: <50ms
+
 ### Adoption
 - Used by >3 unju.ai agents
 - >100 trades executed in first month
 - Zero security incidents
 - Positive agent feedback
+- UI interactions per session: >5
 
 ## References
 
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
+- [MCP Apps Extension (SEP-1865)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1865)
+- [MCP Apps SDK](https://github.com/modelcontextprotocol/ext-apps)
+- [MCP Apps Blog Post](https://blog.modelcontextprotocol.io/posts/2025-11-21-mcp-apps/)
 - [LiveKit Agents MCP Support](https://docs.livekit.io/agents/)
 - [Hyperliquid API Documentation](https://hyperliquid.gitbook.io/)
 - [FastMCP Documentation](https://github.com/modelcontextprotocol/python-sdk)
@@ -719,4 +1021,5 @@ tools = await perps.list_tools()
 
 ## Changelog
 
-- **2026-02-25**: Initial draft (Green Tara)
+- **2026-02-25 v2**: Major revision - replaced static images with MCP Apps interactive HTML UIs
+- **2026-02-25 v1**: Initial draft with base64 image approach
