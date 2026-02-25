@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unju-perps"
+version = "0.1.0"
+description = "Agent-friendly wrapper over Hyperliquid SDK for perpetual futures trading"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "unju.ai", email = "hello@unju.ai"}
+]
+keywords = ["hyperliquid", "perpetual", "futures", "trading", "ai", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "hyperliquid-python-sdk>=0.5.0",
+    "eth-account>=0.10.0",
+    "web3>=6.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/unju-ai/unju-perps"
+Documentation = "https://github.com/unju-ai/unju-perps#readme"
+Repository = "https://github.com/unju-ai/unju-perps"
+Issues = "https://github.com/unju-ai/unju-perps/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["unju_perps*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
